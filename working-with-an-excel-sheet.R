@@ -25,3 +25,11 @@ print(DataFrame_SecondDataSet)
 
 merged_data_frame = merge(DataFrame_SecondDataSet, DataFrame_FirstDataSet, by="Title")
 print(merged_data_frame)
+
+#Plotting the dataframes defined abouve
+#first convert to matrix
+data_matrix = data.matrix(DataFrame_SecondDataSet)
+
+barplot(data_matrix, xlab="x-asix" , ylab = 'y-axis", main="Bar-Chart")  #BarPlot
+plot(data_matrix, type="l", xlab="x-axis", ylab="yaxis", main="Line-Chart")  #LineChart
+
