@@ -80,30 +80,30 @@ if(nrow(merged_set_excess_new) > 0) {
 
 if(nrow(business_bb_df) > 0) {
   for(i in 1:nrow(business_bb_df)-1){
-    error_message_list <- append(error_message_list, 'Business Price Less than BB Price')
+    error_message_list <- append(error_message_list, 'Business Price less than BB Price')
   }
 }
 if(nrow(ebay_business_df) > 0) {
   for (i in 1:nrow(ebay_business_df)-1){
-    error_message_list <- append(error_message_list, "Business Price less than ebay price")
+    error_message_list <- append(error_message_list, "Business Price less Higher than ebay price")
   }
 }
 
 if(nrow(amazon_business_df) > 0) {
   for (i in 1:nrow(amazon_business_df)-1){
-    error_message_list <- append(error_message_list,'Business Price Less than Amazon Price')
+    error_message_list <- append(error_message_list,'Business Price Less Higher than Amazon Price')
   }
 }
 
 if(nrow(newegg_business_df) > 0) {
   for (i in 1:nrow(newegg_business_df)-1){
-    error_message_list <- append(error_message_list,'Business Price Less than Newegg Price')
+    error_message_list <- append(error_message_list,'Business Price Less Higher than Newegg Price')
   }
 }
 
 if(nrow(newegg_b_business_df) > 0) {
   for (i in 1:nrow(newegg_b_business_df)-1){
-    error_message_list <- append(error_message_list,'Business Price Less than Newegg Business Price')
+    error_message_list <- append(error_message_list,'Business Price Higher than Newegg Business Price')
   }
 }
 
