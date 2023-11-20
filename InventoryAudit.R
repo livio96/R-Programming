@@ -23,7 +23,7 @@ write.csv(merged_data, '/Users/liviobeqiri/Documents/R/R-Programming/DuplicatedS
 
 only_serialized_inventory_df <- data.frame(only_serialized_inventory)
 sn_in_good_status <- filter(only_serialized_inventory_df, Status == 'Good') #Pull a list of all sn that are in good status
-sn_in_good_status_wrong_bin <- filter(sn_in_good_status, (Bin.Number == 'A-RTV-01' | Bin.Number == 'Trash' | Bin.Number == 'StockCount1' | Bin.Number == 'Not Counted'))
+sn_in_good_status_wrong_bin <- filter(sn_in_good_status, (Bin.Number == 'A-RTV-01' | Bin.Number == 'Trash' | Bin.Number == 'StockCount1' | Bin.Number == 'Not Counted', | Bin.Number == 'Refurbishing', | Bin.Number == 'Testing'))
 print(sn_in_good_status_wrong_bin)
 write.csv(sn_in_good_status_wrong_bin, '/Users/liviobeqiri/Documents/R/R-Programming/GoodStatusWrongBin.csv') #create a csv file with all duplicated serials
 
