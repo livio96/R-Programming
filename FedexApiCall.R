@@ -4,6 +4,7 @@ library(readxl)
 library(dplyr)
 library(httr)
 library(jsonlite)
+library(jqr)
 
 headers = c(
   'Content-Type' = 'application/x-www-form-urlencoded',
@@ -12,12 +13,16 @@ headers = c(
 
 body = list(
   'grant_type' = 'client_credentials',
-  'client_id' = 'l7323984b6ecf04b81afa701d1f19358b4',
-  'client_secret' = '3b36737c3b9942e89075d00cc29fb4e6'
+  'client_id' = '',
+  'client_secret' = ''
 )
 
 res <- VERB("POST", url = "https://apis.fedex.com/oauth/token", body = body, add_headers(headers), encode = 'form')
 
-results <- content(res, 'text')
+results <- content(res, as="parsed")
+as_df <- as.data.frame(results)
+rownames(as_df) <- NULL
+access_token <- print(as_df["access_token"[1]])
+print(toString(access_token))
+#parse2json <- (toJSON(results))
 
-print(results[1])
