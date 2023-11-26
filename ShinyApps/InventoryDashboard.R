@@ -35,8 +35,7 @@ ui <- fluidPage(
     "Manufacturer",
     choices = c("All", "Cisco", "Plantronics")
   ),
-  #selectInput("download", "Select Data to download", choices = c("euro", "mtcars", "iris")),
-  #textInput("Manufacturer", "Manufacturer: ", ""),
+  downloadButton("downloadData", "Download Inventory List"),
   
   
   br(),
@@ -56,6 +55,22 @@ server <- function(input, output) {
   raw_data <- read_excel(file_path)
   df <- as.data.frame(raw_data)
   
+  
+  
+  ####download inventory report####
+
+    #download data in a csv file
+    output$downloadData <- downloadHandler(
+      filename = function() {
+        paste('Inventory Report.csv', sep='')
+      },
+      content = function(file) {
+        # Write the dataset to the `file` that will be downloaded
+        write.csv(df, file)
+      }
+    )
+  
+  #Condition Filtering
   observe({
     if (input$Condition == "New") {
       df_new <- filter(df, CONDITION == "New")
