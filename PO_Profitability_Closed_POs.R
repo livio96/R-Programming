@@ -42,27 +42,33 @@ library(readr)
   
   profit_by_Vendor <- final_data_set %>% 
     group_by(Main.Line.Name) %>% 
-    summarise(Profit = sum(profit))
-  view(profit_by_Vendor) 
+    summarise(Profit = sum(profit), Revenue = sum(Rate), InventoryCost = sum(Item.Rate), Fees = sum(Fees))
+  #view(profit_by_Vendor) 
   
   profit_by_item <- final_data_set %>% 
     group_by(Name) %>% 
-    summarise(Profit = sum(profit))
-  view(profit_by_item)
+    summarise(Profit = sum(profit), Revenue = sum(Rate), InventoryCost = sum(Item.Rate), Fees = sum(Fees))
+  #view(profit_by_item)
   
   profit_by_po <- final_data_set %>% 
     group_by(Sales.Rep, Document.Number) %>% 
-    summarise(Profit = sum(profit))
-  view(profit_by_po)
+    summarise(Profit = sum(profit), Revenue = sum(Rate), InventoryCost = sum(Item.Rate), Fees = sum(Fees))
+  #view(profit_by_po)
     
   profit_by_rep <- final_data_set %>% 
     group_by(Sales.Rep) %>%
-    summarise(Profit = sum(profit))
+    summarise(Profit = sum(profit), Revenue = sum(Rate), InventoryCost = sum(Item.Rate), Fees = sum(Fees))
     
-  view(profit_by_rep)
+  #view(profit_by_rep)
   
-
-
-
+  profit_by_item <- as.data.frame(profit_by_item)
+  profit_by_po <- as.data.frame(profit_by_po)
+  profit_by_rep <- as.data.frame(profit_by_rep)
+  profit_by_Vendor <- as.data.frame(profit_by_Vendor)
+  
+  write.xlsx(profit_by_rep, file = "C:/Users/LivioBeqiri/Desktop/R/PO-FullyClosed.xlsx", sheetName = "Profit - Rep")
+  write.xlsx(profit_by_Vendor, file="C:/Users/LivioBeqiri/Desktop/R/PO-FullyClosed.xlsx", sheetName="Profit - Vendor", append=TRUE)
+  write.xlsx(profit_by_item, file = "C:/Users/LivioBeqiri/Desktop/R/PO-FullyClosed.xlsx", sheetName = "Profit - Item", append = TRUE)
+  write.xlsx(profit_by_po, file = "C:/Users/LivioBeqiri/Desktop/R/PO-FullyClosed.xlsx", sheetName = "Profit - PO", append = TRUE)
 
 
