@@ -2,8 +2,8 @@ library(httr)
 
 #Register an application
 nouns_app <- oauth_app("noun_project",
-                       key = "200b3bacd548c08046abbdcb50b5374445f8081176e0fe1ca28a2d80918686d1",
-                       secret = "91a127b1123f622bd951c9a52f6c3609449fbb05101fd2f5df1a13ca105c2932"
+                       key = "",
+                       secret = ""
 )
 
 #Endpoint
