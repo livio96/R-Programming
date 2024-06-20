@@ -132,8 +132,12 @@ print(auth_header)
 
 #POST(NETSUITE_DEPLOYMENT_URL, body = login, encode = "form", verbose())
 
-result <- POST(NETSUITE_DEPLOYMENT_URL,
-               body = encoded,
-               add_headers(.headers = c("Content-Type"="application/json","Authorization"=auth_header)))
-Output <- content(result)
-print(Output)
+#Convert results into a dataframe 
+
+Output <- content(result, "text")
+Output_json <- fromJSON(Output)
+Output_df <- as.data.frame(Output_json)
+
+print(Output_df)
+
+write.csv(Output_df, "C:/Users/LivioBeqiri/Desktop/R/NetsuiteSearchResults.csv")
