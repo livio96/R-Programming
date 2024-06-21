@@ -36,11 +36,13 @@ print(NETSUITE_TOKEN_ID)
 
 
 NETSUITE_TOKEN_SECRET = '';
-print(NETSUITE_TOKEN_SECRET);
+query <- "Select mpn from item"
 
-encoded <-  jsonlite::toJSON (x = jsonlite::fromJSON ('{"query":"Select * from CUSTOMER where companyName=\'Livio Beqiri\'"}',simplifyVector = FALSE), auto_unbox = TRUE)
+# Create a list with the query
+query_list <- list(query = query)
 
-print(encoded) ;
+# Convert the list to JSON
+encoded <- toJSON(query_list, auto_unbox = TRUE)
 
 oauth_nonce= 'ABCDEFGH';
 oauth_timestamp= as.character(as.integer(Sys.time())); 
