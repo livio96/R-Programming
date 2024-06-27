@@ -1,3 +1,7 @@
+#This application can be accessed by visiting this link: 
+#https://telquest.shinyapps.io/TelQuestInventoryDashboard/
+
+
 library(shiny)
 library(httr)
 library(jsonlite)
