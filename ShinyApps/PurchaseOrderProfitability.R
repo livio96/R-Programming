@@ -1,4 +1,7 @@
 # ───────────────────────────  Purchase-Order Profitability Dashboard  ───────────────────────────
+# New: "Lost / Trashed Inventory"  ≙  max(0, Total.Purchase.Rate − Cost.of.Sold.Inventory − Remaining.Value)
+# -------------------------------------------------------------------------------------------------
+
 library(shiny)
 library(dplyr)
 library(DT)
@@ -202,8 +205,8 @@ server <- function(input, output, session) {
       )
   }
   
-  # ── Sales-agent summary ────────────────────────────────────────────
-  agentSummary <- reactive({
+  # ── First calculate PO level data ─────────────────────────────
+  calculatePOData <- reactive({
     rec <- received()
     
     # Find Sales.Rep column
@@ -224,47 +227,6 @@ server <- function(input, output, session) {
     if (sales_rep_col != "Sales.Rep") {
       rec$Sales.Rep <- rec[[sales_rep_col]]
     }
-    
-    merged <- calculateFees(mergedData())
-    inv_serials <- invSerials()
-    
-    rec %>%
-      group_by(Sales.Rep) %>%
-      summarise(
-        Quantity.Purchased      = n(),
-        Total.Purchase.Rate     = sum(Item.Rate, na.rm = TRUE),
-        Cost.of.Sold.Inventory  = sum(Item.Rate[Serial.Number %in% merged$Serial.Number], na.rm = TRUE),
-        Remaining.Quantity      = sum(Serial.Number %in% inv_serials),
-        Remaining.Value         = sum(Item.Rate[Serial.Number %in% inv_serials], na.rm = TRUE),
-        Total.Sales.Amount      = sum(merged$Rate[merged$Serial.Number %in% Serial.Number], na.rm = TRUE),
-        Total.Fees              = sum(merged$Fees[merged$Serial.Number %in% Serial.Number], na.rm = TRUE),
-        .groups = "drop"
-      ) %>%
-      mutate(
-        # Using pmax to ensure Lost.Trashed.Inventory is never negative
-        Lost.Trashed.Inventory  = pmax(0, Total.Purchase.Rate - Cost.of.Sold.Inventory - Remaining.Value),
-        Total.Gross.Profit      = Total.Sales.Amount - Cost.of.Sold.Inventory,
-        Net.Profit              = Total.Gross.Profit - Total.Fees
-      ) %>%
-      mutate(
-        across(c(Total.Purchase.Rate, Cost.of.Sold.Inventory, Remaining.Value,
-                 Lost.Trashed.Inventory, Total.Sales.Amount, Total.Fees,
-                 Total.Gross.Profit, Net.Profit), dollar)
-      )
-  })
-  
-  output$agentTable <- renderDT({
-    datatable(agentSummary(), selection = "single",
-              options = list(pageLength = 15, scrollX = TRUE))
-  })
-  
-  # ── PO (document) breakdown per selected agent ─────────────────────
-  output$docTable <- renderDT({
-    
-    req(input$agentTable_rows_selected)
-    sel_agent <- agentSummary()$Sales.Rep[input$agentTable_rows_selected]
-    
-    rec <- received()
     
     # Find Document.Number column
     doc_col <- "Document.Number"
@@ -288,9 +250,9 @@ server <- function(input, output, session) {
     merged <- calculateFees(mergedData())
     inv_serials <- invSerials()
     
+    # Calculate at PO level
     rec %>%
-      filter(Sales.Rep == sel_agent) %>%
-      group_by(Document.Number) %>%
+      group_by(Sales.Rep, Document.Number) %>%
       summarise(
         Quantity.Purchased      = n(),
         Total.Purchase.Rate     = sum(Item.Rate, na.rm = TRUE),
@@ -302,11 +264,53 @@ server <- function(input, output, session) {
         .groups = "drop"
       ) %>%
       mutate(
-        # Using pmax to ensure Lost.Trashed.Inventory is never negative
         Lost.Trashed.Inventory  = pmax(0, Total.Purchase.Rate - Cost.of.Sold.Inventory - Remaining.Value),
         Total.Gross.Profit      = Total.Sales.Amount - Cost.of.Sold.Inventory,
         Net.Profit              = Total.Gross.Profit - Total.Fees
+      )
+  })
+  
+  # ── Sales-agent summary ────────────────────────────────────────────
+  agentSummary <- reactive({
+    # Now use the PO-level data to calculate agent summary by grouping
+    calculatePOData() %>%
+      group_by(Sales.Rep) %>%
+      summarise(
+        Quantity.Purchased      = sum(Quantity.Purchased),
+        Total.Purchase.Rate     = sum(Total.Purchase.Rate),
+        Cost.of.Sold.Inventory  = sum(Cost.of.Sold.Inventory),
+        Remaining.Quantity      = sum(Remaining.Quantity),
+        Remaining.Value         = sum(Remaining.Value),
+        Total.Sales.Amount      = sum(Total.Sales.Amount),
+        Total.Fees              = sum(Total.Fees),
+        # Sum up the already calculated Lost.Trashed.Inventory values from PO level
+        Lost.Trashed.Inventory  = sum(Lost.Trashed.Inventory),
+        Total.Gross.Profit      = sum(Total.Gross.Profit),
+        Net.Profit              = sum(Net.Profit),
+        .groups = "drop"
       ) %>%
+      mutate(
+        across(c(Total.Purchase.Rate, Cost.of.Sold.Inventory, Remaining.Value,
+                 Lost.Trashed.Inventory, Total.Sales.Amount, Total.Fees,
+                 Total.Gross.Profit, Net.Profit), dollar)
+      )
+  })
+  
+  output$agentTable <- renderDT({
+    datatable(agentSummary(), selection = "single",
+              options = list(pageLength = 15, scrollX = TRUE))
+  })
+  
+  # ── PO (document) breakdown per selected agent ─────────────────────
+  output$docTable <- renderDT({
+    
+    req(input$agentTable_rows_selected)
+    sel_agent <- agentSummary()$Sales.Rep[input$agentTable_rows_selected]
+    
+    # Use the already calculated PO data and filter for selected agent
+    calculatePOData() %>%
+      filter(Sales.Rep == sel_agent) %>%
+      select(-Sales.Rep) %>%  # Remove the Sales.Rep column since we're already filtered
       mutate(
         across(c(Total.Purchase.Rate, Cost.of.Sold.Inventory, Remaining.Value,
                  Lost.Trashed.Inventory, Total.Sales.Amount, Total.Fees,
@@ -328,49 +332,10 @@ server <- function(input, output, session) {
       req(input$agentTable_rows_selected)
       sel_agent <- agentSummary()$Sales.Rep[input$agentTable_rows_selected]
       
-      merged <- calculateFees(mergedData())
-      inv_serials <- invSerials()
-      
-      rec <- received()
-      
-      # Find Document.Number column if not already defined
-      if (!exists("doc_col") || is.null(doc_col)) {
-        doc_col <- "Document.Number"
-        if (!doc_col %in% names(rec)) {
-          if ("Document Number" %in% names(rec)) {
-            doc_col <- "Document Number"
-          } else {
-            possible_cols <- names(rec)[grepl("doc|purchase.*order|po", tolower(names(rec)))]
-            if (length(possible_cols) > 0) {
-              doc_col <- possible_cols[1]
-            }
-          }
-        }
-        
-        if (doc_col != "Document.Number" && !is.null(doc_col)) {
-          rec$Document.Number <- rec[[doc_col]]
-        }
-      }
-      
-      doc_summary <- rec %>%
+      # Use the already calculated PO data and filter for selected agent
+      doc_summary <- calculatePOData() %>%
         filter(Sales.Rep == sel_agent) %>%
-        group_by(Document.Number) %>%
-        summarise(
-          Quantity.Purchased      = n(),
-          Total.Purchase.Rate     = sum(Item.Rate, na.rm = TRUE),
-          Cost.of.Sold.Inventory  = sum(Item.Rate[Serial.Number %in% merged$Serial.Number], na.rm = TRUE),
-          Remaining.Quantity      = sum(Serial.Number %in% inv_serials),
-          Remaining.Value         = sum(Item.Rate[Serial.Number %in% inv_serials], na.rm = TRUE),
-          Total.Sales.Amount      = sum(merged$Rate[merged$Serial.Number %in% Serial.Number], na.rm = TRUE),
-          Total.Fees              = sum(merged$Fees[merged$Serial.Number %in% Serial.Number], na.rm = TRUE),
-          .groups = "drop"
-        ) %>%
-        mutate(
-          # Using pmax to ensure Lost.Trashed.Inventory is never negative
-          Lost.Trashed.Inventory  = pmax(0, Total.Purchase.Rate - Cost.of.Sold.Inventory - Remaining.Value),
-          Total.Gross.Profit      = Total.Sales.Amount - Cost.of.Sold.Inventory,
-          Net.Profit              = Total.Gross.Profit - Total.Fees
-        )
+        select(-Sales.Rep)  # Remove the Sales.Rep column since we're already filtered
       
       write_xlsx(doc_summary, file)
     }
