@@ -16,9 +16,10 @@ ui <- fluidPage(
   fluidRow(
     column(
       6,
-      fileInput("receivedFile",  "Upload Received CSV",  accept = ".csv"),
-      fileInput("inventoryFile", "Upload Inventory CSV", accept = ".csv"),
-      fileInput("fulfilledFile", "Upload Fulfilled CSV", accept = ".csv")
+      fileInput("receivedFile",  "Upload Received CSV",             accept = ".csv"),
+      fileInput("inventoryFile", "Upload Inventory CSV",            accept = ".csv"),
+      fileInput("fulfilledFile", "Upload Fulfilled CSV",            accept = ".csv"),
+      fileInput("kitsFile",      "Upload Fulfilled-Kits CSV",       accept = ".csv")
     ),
     column(
       6,
@@ -40,121 +41,57 @@ server <- function(input, output, session) {
   received  <- reactive({ req(input$receivedFile);  read.csv(input$receivedFile$datapath) })
   inventory <- reactive({ req(input$inventoryFile); read.csv(input$inventoryFile$datapath) })
   fulfilled <- reactive({ req(input$fulfilledFile); read.csv(input$fulfilledFile$datapath) })
+  kits      <- reactive({
+    if (is.null(input$kitsFile)) data.frame() else read.csv(input$kitsFile$datapath)
+  })
+  
+  # Combine fulfilled + kits
+  allFulfilled <- reactive(bind_rows(fulfilled(), kits()))
   
   # ── One source of truth for inventory serials ──────────────────────
   invSerials <- reactive({
     inv <- inventory()
-    
-    # Try to find the exact column name first
     inventory_cols <- names(inv)
-    cat("Available inventory columns:", paste(inventory_cols, collapse=", "), "\n")
     
-    # Try to find Formula (Text) column with flexibility
-    formula_text_col <- NULL
+    formula_text_col <- dplyr::case_when(
+      "Formula (Text)"                 %in% inventory_cols ~ "Formula (Text)",
+      any(grepl("formula.*text", tolower(inventory_cols))) ~ inventory_cols[grepl("formula.*text", tolower(inventory_cols))][1],
+      any(grepl("inventory",   tolower(inventory_cols)))   ~ inventory_cols[grepl("inventory",   tolower(inventory_cols))][1],
+      "Item Inventory Number"          %in% inventory_cols ~ "Item Inventory Number",
+      "Inventory Number"               %in% inventory_cols ~ "Inventory Number",
+      TRUE                                                ~ NA_character_
+    )
     
-    # First, try exact match
-    if ("Formula (Text)" %in% inventory_cols) {
-      formula_text_col <- "Formula (Text)"
-    } 
-    # Next, try case-insensitive match
-    else {
-      possible_cols <- inventory_cols[grepl("formula.*(text)", tolower(inventory_cols))]
-      if (length(possible_cols) > 0) {
-        formula_text_col <- possible_cols[1]
-      }
-    }
-    
-    # If still not found, look for any column with "inventory" in the name
-    if (is.null(formula_text_col)) {
-      possible_cols <- inventory_cols[grepl("inventory", tolower(inventory_cols))]
-      if (length(possible_cols) > 0) {
-        formula_text_col <- possible_cols[1]
-      }
-    }
-    
-    # As a last resort, use the columns you mentioned
-    if (is.null(formula_text_col)) {
-      if ("Item Inventory Number" %in% inventory_cols) {
-        formula_text_col <- "Item Inventory Number"
-      } else if ("Inventory Number" %in% inventory_cols) {
-        formula_text_col <- "Inventory Number"
-      }
-    }
-    
-    validate(need(!is.null(formula_text_col),
-                  "Could not find a suitable serial number column in the inventory file. 
-                  Please ensure it contains 'Formula (Text)', 'Item Inventory Number', or 'Inventory Number'."))
-    
-    cat("Using inventory column:", formula_text_col, "\n")
+    validate(need(!is.na(formula_text_col),
+                  "Could not find a suitable serial number column in the inventory file."))
     inv[[formula_text_col]] |> trimws() |> unique()
   })
   
-  # ── Merge received + fulfilled for fee calc ────────────────────────
+  # ── Merge received + allFulfilled for fee calc ─────────────────────
   mergedData <- reactive({
-    # Try to find Serial.Number column with flexibility
     rec <- received()
-    ful <- fulfilled()
+    ful <- allFulfilled()
     
-    rec_serial_col <- "Serial.Number"
-    if (!rec_serial_col %in% names(rec)) {
-      # Try without the dot
-      if ("Serial Number" %in% names(rec)) {
-        rec_serial_col <- "Serial Number"
-      } else {
-        possible_cols <- names(rec)[grepl("serial", tolower(names(rec)))]
-        if (length(possible_cols) > 0) {
-          rec_serial_col <- possible_cols[1]
-        }
-      }
-    }
+    rec_serial_col <- if ("Serial.Number" %in% names(rec)) "Serial.Number"
+                      else if ("Serial Number" %in% names(rec)) "Serial Number"
+                      else names(rec)[grepl("serial", tolower(names(rec)))][1]
     
-    ful_serial_col <- "Serial.Number"
-    if (!ful_serial_col %in% names(ful)) {
-      # Try without the dot
-      if ("Serial Number" %in% names(ful)) {
-        ful_serial_col <- "Serial Number"
-      } else {
-        possible_cols <- names(ful)[grepl("serial", tolower(names(ful)))]
-        if (length(possible_cols) > 0) {
-          ful_serial_col <- possible_cols[1]
-        }
-      }
-    }
+    ful_serial_col <- if ("Serial.Number" %in% names(ful)) "Serial.Number"
+                      else if ("Serial Number" %in% names(ful)) "Serial Number"
+                      else names(ful)[grepl("serial", tolower(names(ful)))][1]
     
-    validate(need(!is.null(rec_serial_col), "Could not find a serial number column in the received file."))
-    validate(need(!is.null(ful_serial_col), "Could not find a serial number column in the fulfilled file."))
+    validate(need(!is.na(rec_serial_col), "Could not find a serial number column in the received file."))
+    validate(need(!is.na(ful_serial_col), "Could not find a serial number column in the fulfilled files."))
     
-    cat("Using received serial column:", rec_serial_col, "\n")
-    cat("Using fulfilled serial column:", ful_serial_col, "\n")
+    rate_col <- if ("Item.Rate" %in% names(rec)) "Item.Rate"
+                else if ("Item Rate" %in% names(rec)) "Item Rate"
+                else names(rec)[grepl("rate", tolower(names(rec)))][1]
     
-    # Check if Item.Rate exists in received or find alternative
-    rate_col <- "Item.Rate"
-    if (!rate_col %in% names(rec)) {
-      if ("Item Rate" %in% names(rec)) {
-        rate_col <- "Item Rate"
-      } else {
-        possible_cols <- names(rec)[grepl("rate", tolower(names(rec)))]
-        if (length(possible_cols) > 0) {
-          rate_col <- possible_cols[1]
-        }
-      }
-    }
+    validate(need(!is.na(rate_col), "Could not find an item rate column in the received file."))
     
-    validate(need(!is.null(rate_col), "Could not find an item rate column in the received file."))
-    cat("Using rate column:", rate_col, "\n")
-    
-    # Rename columns for consistency if needed
-    if (rec_serial_col != "Serial.Number") {
-      rec$Serial.Number <- rec[[rec_serial_col]]
-    }
-    
-    if (ful_serial_col != "Serial.Number") {
-      ful$Serial.Number <- ful[[ful_serial_col]]
-    }
-    
-    if (rate_col != "Item.Rate") {
-      rec$Item.Rate <- rec[[rate_col]]
-    }
+    if (rec_serial_col != "Serial.Number") rec$Serial.Number <- rec[[rec_serial_col]]
+    if (ful_serial_col != "Serial.Number") ful$Serial.Number <- ful[[ful_serial_col]]
+    if (rate_col        != "Item.Rate")    rec$Item.Rate     <- rec[[rate_col]]
     
     rec %>%
       select(Serial.Number, Item.Rate) %>%
@@ -162,31 +99,16 @@ server <- function(input, output, session) {
   })
   
   calculateFees <- function(df) {
-    # Check if eTail.Channel exists or find alternative
-    channel_col <- "eTail.Channel"
-    if (!channel_col %in% names(df)) {
-      if ("eTail Channel" %in% names(df)) {
-        channel_col <- "eTail Channel"
-      } else {
-        possible_cols <- names(df)[grepl("channel|etail", tolower(names(df)))]
-        if (length(possible_cols) > 0) {
-          channel_col <- possible_cols[1]
-        }
-      }
-    }
+    channel_col <- if ("eTail.Channel" %in% names(df)) "eTail.Channel"
+                   else if ("eTail Channel" %in% names(df)) "eTail Channel"
+                   else names(df)[grepl("channel|etail", tolower(names(df)))][1]
     
     if (channel_col != "eTail.Channel" && !is.null(channel_col)) {
       df$eTail.Channel <- df[[channel_col]]
     }
     
-    # Check if Rate exists in df
-    rate_col <- "Rate"
-    if (!rate_col %in% names(df)) {
-      possible_cols <- names(df)[grepl("^rate$|^price$", tolower(names(df)))]
-      if (length(possible_cols) > 0) {
-        rate_col <- possible_cols[1]
-      }
-    }
+    rate_col <- if ("Rate" %in% names(df)) "Rate"
+                else names(df)[grepl("^rate$|^price$", tolower(names(df)))][1]
     
     if (rate_col != "Rate" && !is.null(rate_col)) {
       df$Rate <- df[[rate_col]]
@@ -209,48 +131,23 @@ server <- function(input, output, session) {
   calculatePOData <- reactive({
     rec <- received()
     
-    # Find Sales.Rep column
-    sales_rep_col <- "Sales.Rep"
-    if (!sales_rep_col %in% names(rec)) {
-      if ("Sales Rep" %in% names(rec)) {
-        sales_rep_col <- "Sales Rep"
-      } else {
-        possible_cols <- names(rec)[grepl("sales.*rep|rep|agent", tolower(names(rec)))]
-        if (length(possible_cols) > 0) {
-          sales_rep_col <- possible_cols[1]
-        }
-      }
-    }
+    sales_rep_col <- if ("Sales.Rep" %in% names(rec)) "Sales.Rep"
+                     else if ("Sales Rep" %in% names(rec)) "Sales Rep"
+                     else names(rec)[grepl("sales.*rep|rep|agent", tolower(names(rec)))][1]
     
-    validate(need(!is.null(sales_rep_col), "Could not find a sales rep column in the received file."))
+    validate(need(!is.na(sales_rep_col), "Could not find a sales rep column in the received file."))
+    if (sales_rep_col != "Sales.Rep") rec$Sales.Rep <- rec[[sales_rep_col]]
     
-    if (sales_rep_col != "Sales.Rep") {
-      rec$Sales.Rep <- rec[[sales_rep_col]]
-    }
+    doc_col <- if ("Document.Number" %in% names(rec)) "Document.Number"
+               else if ("Document Number" %in% names(rec)) "Document Number"
+               else names(rec)[grepl("doc|purchase.*order|po", tolower(names(rec)))][1]
     
-    # Find Document.Number column
-    doc_col <- "Document.Number"
-    if (!doc_col %in% names(rec)) {
-      if ("Document Number" %in% names(rec)) {
-        doc_col <- "Document Number"
-      } else {
-        possible_cols <- names(rec)[grepl("doc|purchase.*order|po", tolower(names(rec)))]
-        if (length(possible_cols) > 0) {
-          doc_col <- possible_cols[1]
-        }
-      }
-    }
+    validate(need(!is.na(doc_col), "Could not find a document number column in the received file."))
+    if (doc_col != "Document.Number") rec$Document.Number <- rec[[doc_col]]
     
-    validate(need(!is.null(doc_col), "Could not find a document number column in the received file."))
-    
-    if (doc_col != "Document.Number") {
-      rec$Document.Number <- rec[[doc_col]]
-    }
-    
-    merged <- calculateFees(mergedData())
+    merged      <- calculateFees(mergedData())
     inv_serials <- invSerials()
     
-    # Calculate at PO level
     rec %>%
       group_by(Sales.Rep, Document.Number) %>%
       summarise(
@@ -272,7 +169,6 @@ server <- function(input, output, session) {
   
   # ── Sales-agent summary ────────────────────────────────────────────
   agentSummary <- reactive({
-    # Now use the PO-level data to calculate agent summary by grouping
     calculatePOData() %>%
       group_by(Sales.Rep) %>%
       summarise(
@@ -283,7 +179,6 @@ server <- function(input, output, session) {
         Remaining.Value         = sum(Remaining.Value),
         Total.Sales.Amount      = sum(Total.Sales.Amount),
         Total.Fees              = sum(Total.Fees),
-        # Sum up the already calculated Lost.Trashed.Inventory values from PO level
         Lost.Trashed.Inventory  = sum(Lost.Trashed.Inventory),
         Total.Gross.Profit      = sum(Total.Gross.Profit),
         Net.Profit              = sum(Net.Profit),
@@ -303,14 +198,12 @@ server <- function(input, output, session) {
   
   # ── PO (document) breakdown per selected agent ─────────────────────
   output$docTable <- renderDT({
-    
     req(input$agentTable_rows_selected)
     sel_agent <- agentSummary()$Sales.Rep[input$agentTable_rows_selected]
     
-    # Use the already calculated PO data and filter for selected agent
     calculatePOData() %>%
       filter(Sales.Rep == sel_agent) %>%
-      select(-Sales.Rep) %>%  # Remove the Sales.Rep column since we're already filtered
+      select(-Sales.Rep) %>%
       mutate(
         across(c(Total.Purchase.Rate, Cost.of.Sold.Inventory, Remaining.Value,
                  Lost.Trashed.Inventory, Total.Sales.Amount, Total.Fees,
@@ -328,14 +221,12 @@ server <- function(input, output, session) {
   output$exportDocExcel <- downloadHandler(
     filename = function() paste0("PO_Summary_", Sys.Date(), ".xlsx"),
     content  = function(file) {
-      
       req(input$agentTable_rows_selected)
       sel_agent <- agentSummary()$Sales.Rep[input$agentTable_rows_selected]
       
-      # Use the already calculated PO data and filter for selected agent
       doc_summary <- calculatePOData() %>%
         filter(Sales.Rep == sel_agent) %>%
-        select(-Sales.Rep)  # Remove the Sales.Rep column since we're already filtered
+        select(-Sales.Rep)
       
       write_xlsx(doc_summary, file)
     }
