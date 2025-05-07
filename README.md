@@ -1,16 +1,13 @@
 # R-Programming
 
-# ShinyApps Links (See ShinyApps Folder For Complete Code)
+Welcome to my R/Shiny repository — a curated collection of interactive web applications built using R and Shiny. This repository demonstrates the power of Shiny for creating responsive, data-driven dashboards, visualizations, and tools.
 
-#1 Personal Finance Tracker
-https://telquest.shinyapps.io/PersonalFinanceTracker/
+🌐 Live Demos
+Each application listed below can be launched directly from RStudio or hosted via shinyapps.io or a local Shiny Server.
 
-#2 Vlookup Tool 
-https://websitetelquestintl.shinyapps.io/VlookupTool/
-
-#3 TelQuest Inventory Dashboard
-https://telquest.shinyapps.io/TelQuestInventoryDashboard/
-
+Purchase Order Profitability -  https://websitetelquestintl.shinyapps.io/PurchaseOrderProfitabilityRT/
+Inventory List Dashboard- https://telquest.shinyapps.io/TelQuestInventoryDashboard/
+Inventory Aging Dashboard - https://websitetelquestintl.shinyapps.io/InventoryAgingDashboard/
 
 
 
