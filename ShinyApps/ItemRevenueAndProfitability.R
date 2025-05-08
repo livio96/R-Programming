@@ -13,7 +13,7 @@ library(shinycssloaders)
 `%||%` <- function(x, y) if (is.null(x)) y else x
 
 # Data source URL (spaces encoded)
-data_url <- "https://www.telquestintl.com/Item%20Revenue%20and%20Profitability%20Dashboard/.csv"
+data_url <- ""
 
 # Updated value box function with enhanced styling
 define_valueBox <- function(value, title, icon_name, color, trend = NULL, trend_icon = NULL, trend_color = NULL) {
@@ -246,7 +246,7 @@ server <- function(input, output, session) {
     withProgress(message = 'Loading data...', value = 0.5, {
       read.csv(data_url, stringsAsFactors = FALSE, check.names = FALSE) %>%
         mutate(
-          `Quantity Sold` = as.numeric(`Quantity Sold`),     # <<< convert to numeric
+          `Quantity Sold` = as.numeric(`Quantity Sold`),
           Revenue         = as.numeric(Revenue),
           Cost            = as.numeric(Cost),
           GP              = as.numeric(GP),
@@ -293,85 +293,41 @@ server <- function(input, output, session) {
   # Improved summary boxes with trends
   output$summary_revenue <- renderUI({
     current_revenue <- sum(filtered()$Revenue, na.rm = TRUE)
-    prev_period <- df() %>% 
-      filter(!is.na(Date)) %>%
-      mutate(Period = ifelse(Date >= Sys.Date() - 30, "Current", "Previous")) %>%
-      group_by(Period) %>%
-      summarise(Revenue = sum(Revenue, na.rm = TRUE), .groups = "drop")
-    
-    trend_pct <- NULL
-    trend_icon <- NULL
-    trend_color <- NULL
-    
-    
-    
+    # (Additional logic for trends could be added here)
     define_valueBox(
       dollar(current_revenue),
       "Total Revenue", 
       "dollar-sign", 
-      "bg-blue",
-      trend_pct,
-      trend_icon,
-      trend_color
+      "bg-blue"
     )
   })
   
   output$summary_profit <- renderUI({
     current_profit <- sum(filtered()$GP, na.rm = TRUE)
-    prev_period <- df() %>% 
-      filter(!is.na(Date)) %>%
-      mutate(Period = ifelse(Date >= Sys.Date() - 30, "Current", "Previous")) %>%
-      group_by(Period) %>%
-      summarise(GP = sum(GP, na.rm = TRUE), .groups = "drop")
-    
-    trend_pct <- NULL
-    trend_icon <- NULL
-    trend_color <- NULL
-    
-   
-    
     define_valueBox(
       dollar(current_profit),
       "Total Gross Profit", 
       "chart-line", 
-      "bg-green",
-      trend_pct,
-      trend_icon,
-      trend_color
+      "bg-green"
     )
   })
   
   output$summary_gp_pct <- renderUI({
     current_gp_pct <- mean(filtered()$GP.Pct, na.rm = TRUE)
-    prev_period <- df() %>% 
-      filter(!is.na(Date)) %>%
-      mutate(Period = ifelse(Date >= Sys.Date() - 30, "Current", "Previous")) %>%
-      group_by(Period) %>%
-      summarise(GP_Pct = mean(GP.Pct, na.rm = TRUE), .groups = "drop")
-    
-    trend_pct <- NULL
-    trend_icon <- NULL
-    trend_color <- NULL
-    
-   
-    
     define_valueBox(
       paste0(round(current_gp_pct, 1), "%"),
       "Average GP %", 
       "percentage", 
-      "bg-orange",
-      trend_pct,
-      trend_icon,
-      trend_color
+      "bg-orange"
     )
   })
   
-  # Data table (grouped by Item)
   output$data_table <- renderDT({
     dat <- filtered() %>%
       group_by(Item, Description, Manufacturer) %>%
       summarise(
         `Quantity Sold` = sum(`Quantity Sold`, na.rm = TRUE),
+        Available       = first(Available),  # Show once, do not sum
         Revenue         = sum(Revenue, na.rm = TRUE),
         Cost            = sum(Cost, na.rm = TRUE),
         GP              = sum(GP, na.rm = TRUE),
@@ -384,20 +340,20 @@ server <- function(input, output, session) {
       ) %>%
       arrange(desc(Revenue))
     
-    datatable(dat, rownames = FALSE, extensions = c('Buttons','Responsive'), options = list(
-      dom = 'Blfrtip',
-      buttons = list(
-        list(extend='copy',  className='btn-sm'),
-        list(extend='csv',   className='btn-sm'),
-        list(extend='excel', className='btn-sm')
-      ),
-      pageLength = 15,
-      scrollX    = TRUE,
-      columnDefs = list(
-        list(width = '250px', targets = 1),
-        list(className = 'dt-center', targets = c(3,7))
-      )
-    ), class = 'cell-border stripe hover') %>%
+    datatable(dat,
+              rownames  = FALSE,
+              extensions = 'Responsive',
+              options   = list(
+                dom        = 'lrtip',  # l = length menu, r = processing, t = table, i = info, p = paging
+                pageLength = 15,
+                scrollX    = TRUE,
+                columnDefs = list(
+                  list(width = '250px', targets = 1),                 # Description column
+                  list(className = 'dt-center', targets = c(2, 3, 6)) # Center Quantity Sold, Available, GP
+                )
+              ),
+              class = 'cell-border stripe hover'
+    ) %>%
       formatCurrency(c('Revenue','Cost','GP'), '$') %>%
       formatStyle(
         'GP',
@@ -405,6 +361,7 @@ server <- function(input, output, session) {
         backgroundColor = styleInterval(0, c('#ffeeee','#eeffee'))
       )
   })
+  
   
   # CSV export
   output$download_csv <- downloadHandler(
