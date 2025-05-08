@@ -221,7 +221,7 @@ server <- function(input, output, session) {
   
   observeEvent(input$login, {
     req(input$password)
-    if (input$password == "telquestprofit") {
+    if (input$password == "") {
       
       authenticated(TRUE); removeModal()
       
