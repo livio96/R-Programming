@@ -11,8 +11,61 @@ library(lubridate)
 library(stringr)
 library(ggplot2)
 library(DT)
+library(shinyjs) # For showing/hiding elements
 
-ui <- fluidPage(
+# Define the password
+valid_password <- ""
+
+# Login UI
+loginUI <- fluidPage(
+  tags$head(
+    tags$style(HTML("
+      body {
+        font-family: 'Segoe UI', Helvetica, Arial, sans-serif;
+        background-color: #f8f9fa;
+      }
+      .login-panel {
+        max-width: 400px;
+        margin: 100px auto;
+        padding: 30px;
+        background-color: white;
+        border-radius: 5px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      }
+      .login-title {
+        text-align: center;
+        margin-bottom: 30px;
+        color: #333;
+      }
+      .login-btn {
+        width: 100%;
+        margin-top: 15px;
+        background-color: #28a745;
+        border-color: #28a745;
+      }
+      .login-error {
+        color: #dc3545;
+        margin-top: 15px;
+        text-align: center;
+        font-weight: 500;
+      }
+    "))
+  ),
+  div(class = "login-panel",
+      h2(class = "login-title", "Inventory Aging Dashboard"),
+      # Using passwordInput instead of textInput to mask the password
+      passwordInput("password", "Enter Password:", placeholder = "Password"),
+      actionButton("login", "Login", class = "btn btn-primary login-btn"),
+      hidden(
+        div(id = "error_msg", class = "login-error", "Incorrect password. Please try again.")
+      )
+  )
+)
+
+# Main Dashboard UI - will be shown only after authentication
+mainUI <- fluidPage(
+  useShinyjs(), # Initialize shinyjs
+  
   tags$head(tags$style(HTML(
     "
     body, label, input, button, select, table {
@@ -68,10 +121,24 @@ ui <- fluidPage(
       font-family: 'Courier New', Courier, monospace;
       text-align: right;
     }
+    
+    .logout-btn {
+      position: absolute;
+      top: 12px;
+      right: 185px;
+      z-index: 1000;
+      font-size: 0.85rem;
+      padding: 6px 14px;
+      background-color: #6c757d;
+      color: white;
+      border: none;
+      border-radius: 20px;
+    }
     "
   ))),
   
   div(class = "realtime-tag", "Real‑time Connection to NetSuite"),
+  actionButton("logout", "Logout", class = "logout-btn"),
   
   titlePanel("Inventory Aging & Movement Dashboard (Live)"),
   
@@ -99,7 +166,56 @@ ui <- fluidPage(
   )
 )
 
+# Create a UI that can switch between login and main dashboard
+ui <- fluidPage(
+  useShinyjs(),
+  uiOutput("page_content")
+)
+
 server <- function(input, output, session) {
+  # Authentication state
+  is_authenticated <- reactiveVal(FALSE)
+  
+  # Render the appropriate UI based on authentication status
+  output$page_content <- renderUI({
+    if (!is_authenticated()) {
+      loginUI
+    } else {
+      mainUI
+    }
+  })
+  
+  # Handle login attempts
+  observeEvent(input$login, {
+    if (input$password == valid_password) {
+      is_authenticated(TRUE)
+    } else {
+      shinyjs::show("error_msg")
+    }
+  })
+  
+  # Also allow Enter key to submit the login form
+  observeEvent(input$password, {
+    if (input$password != "" && !is.null(input$password)) {
+      # Check if Enter key was pressed
+      session$onFlush(function() {
+        runjs("
+          $(document).ready(function(){
+            $(document).on('keyup', '#password', function(e){
+              if(e.keyCode == 13){
+                $('#login').click();
+              }
+            });
+          });
+        ")
+      })
+    }
+  }, once = TRUE)
+  
+  # Handle logout
+  observeEvent(input$logout, {
+    is_authenticated(FALSE)
+  })
   
   make_choice_labels <- function(levels, colours) {
     lapply(seq_along(levels), function(i) {
@@ -112,7 +228,10 @@ server <- function(input, output, session) {
     })
   }
   
+  # Only fetch data if authenticated
   inventoryRaw <- reactive({
+    req(is_authenticated())
+    
     withProgress(message = 'Loading data from NetSuite...', value = 0.1, {
       NETSUITE_REST_URL <- 'https://586038.restlets.api.netsuite.com/app/site/hosting/restlet.nl'
       acct    <- '586038'; script  <- '3975'; deploy <- '1'
@@ -193,20 +312,22 @@ server <- function(input, output, session) {
     })
   })
   
-  inventory <- reactive({ req(inventoryRaw()); inv <- inventoryRaw();
-  inv %>% mutate(
-    QtySold30    = replace_na(`Quantity.Sold.in.30.days`, 0),
-    QtySold90    = replace_na(`Quantity.Sold.in.90.days`, 0),
-    MonthsOnHand = case_when(QtySold30>0 ~ round(`On.Hand`/QtySold30,1), QtySold90>0 ~ round(`On.Hand`/QtySold90,1), TRUE~NA_real_),
-    RecentReceipt= !is.na(Last.Receipt.Date) & Last.Receipt.Date >= Sys.Date()-days(15),
-    Reason       = factor(case_when(
-      RecentReceipt           ~ 'New Receipt (< 15 days)',
-      MonthsOnHand > 6        ~ 'Over 6 months supply',
-      QtySold30 == 0          ~ 'No sales in 30 days',
-      MonthsOnHand > 3        ~ '> 90 days supply',
-      TRUE                    ~ '< 90 days supply'
-    ), levels = c('New Receipt (< 15 days)','No sales in 30 days','> 90 days supply','Over 6 months supply','< 90 days supply'))
-  )
+  inventory <- reactive({ 
+    req(inventoryRaw()); 
+    inv <- inventoryRaw();
+    inv %>% mutate(
+      QtySold30    = replace_na(`Quantity.Sold.in.30.days`, 0),
+      QtySold90    = replace_na(`Quantity.Sold.in.90.days`, 0),
+      MonthsOnHand = case_when(QtySold30>0 ~ round(`On.Hand`/QtySold30,1), QtySold90>0 ~ round(`On.Hand`/QtySold90,1), TRUE~NA_real_),
+      RecentReceipt= !is.na(Last.Receipt.Date) & Last.Receipt.Date >= Sys.Date()-days(15),
+      Reason       = factor(case_when(
+        RecentReceipt           ~ 'New Receipt (< 15 days)',
+        MonthsOnHand > 6        ~ 'Over 6 months supply',
+        QtySold30 == 0          ~ 'No sales in 30 days',
+        MonthsOnHand > 3        ~ '> 90 days supply',
+        TRUE                    ~ '< 90 days supply'
+      ), levels = c('New Receipt (< 15 days)','No sales in 30 days','> 90 days supply','Over 6 months supply','< 90 days supply'))
+    )
   })
   
   filteredData <- reactive({
@@ -231,6 +352,7 @@ server <- function(input, output, session) {
   )
   
   observe({
+    req(is_authenticated())
     inv <- inventory(); req(inv)
     updateSelectInput(session,'manufacturer',choices=c('All Manufacturers',sort(unique(inv$Manufacturer))),selected='All Manufacturers')
     updateSelectInput(session,'last_purchaser',choices=c('All',sort(unique(inv$Last.Purchaser))),selected='All')
@@ -238,6 +360,7 @@ server <- function(input, output, session) {
   })
   
   output$reasonBar <- renderPlot({
+    req(is_authenticated())
     ggplot(filteredData(), aes(Reason, fill=Reason)) +
       geom_bar() +
       scale_fill_manual(values=colour_map) +
@@ -247,6 +370,7 @@ server <- function(input, output, session) {
   })
   
   output$monthsHist <- renderPlot({
+    req(is_authenticated())
     ggplot(filteredData(), aes(MonthsOnHand)) +
       geom_histogram(bins=30) +
       theme_minimal(base_size=14) +
@@ -254,6 +378,7 @@ server <- function(input, output, session) {
   })
   
   output$manufacturerHeatmap <- renderPlot({
+    req(is_authenticated())
     filteredData() %>%
       count(Manufacturer,Reason) %>%
       pivot_wider(names_from=Reason,values_from=n,values_fill=0) %>%
@@ -267,6 +392,7 @@ server <- function(input, output, session) {
   })
   
   output$inventoryTable <- renderDT({
+    req(is_authenticated())
     dat <- filteredData() %>%
       mutate(
         `On.Hand` = replace_na(`On.Hand`, 0),
