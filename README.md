@@ -5,9 +5,10 @@ Welcome to my R/Shiny repository — a curated collection of interactive web app
 🌐 Live Demos
 Each application listed below can be launched directly from RStudio or hosted via shinyapps.io or a local Shiny Server.
 
-Purchase Order Profitability -  https://websitetelquestintl.shinyapps.io/PurchaseOrderProfitabilityRT/
-Inventory List Dashboard- https://telquest.shinyapps.io/TelQuestInventoryDashboard/
-Inventory Aging Dashboard - https://websitetelquestintl.shinyapps.io/InventoryAgingDashboard/
+Purchase Order Profitability -  https://websitetelquestintl.shinyapps.io/PurchaseOrderProfitabilityRT/ <br>
+Inventory List Dashboard- https://telquest.shinyapps.io/TelQuestInventoryDashboard/  <br>
+Inventory Aging Dashboard - https://websitetelquestintl.shinyapps.io/InventoryAgingDashboard/  <br>
+Item Revenue and Profitability - https://websitetelquestintl.shinyapps.io/ItemRevenueAndProfitability/ <br>
 
 
 
